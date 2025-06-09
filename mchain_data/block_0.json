@@ -1,0 +1,9 @@
+{
+  "index": 0,
+  "timestamp": 1749431131,
+  "data": "Genesis Block",
+  "nonce": 1123747,
+  "previous_hash": "0",
+  "hash": "00000fc9d4a5e0fcf4102bf732bc79ddadef504ce5614fced6be74a6a4177ecf",
+  "mining_duration_ms": 4839
+}

@@ -1,0 +1,9 @@
+{
+  "index": 1,
+  "timestamp": 1749431136,
+  "data": "Resumed Mining #1",
+  "nonce": 584868,
+  "previous_hash": "00000fc9d4a5e0fcf4102bf732bc79ddadef504ce5614fced6be74a6a4177ecf",
+  "hash": "000008538a024c1579d06e4e74fe59a106edfb919e2738302bbc1adbe7933bdc",
+  "mining_duration_ms": 3517
+}
