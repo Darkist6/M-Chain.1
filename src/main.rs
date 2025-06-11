@@ -4,7 +4,7 @@ use std::process::{Command, exit};
 use std::fs::{self, File};
 use std::io::{Write, BufReader};
 use std::path::Path;
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -18,22 +18,31 @@ struct Block {
     mining_duration_ms: u128,
 }
 
-/// MChain CLI Miner
 #[derive(Parser, Debug)]
 #[command(name = "mchain")]
-#[command(about = "Mine blocks on Apple Silicon with dynamic PoW")]
+#[command(about = "Mine or manage MChain blocks on Apple Silicon")]
 struct Args {
-    /// Number of blocks to mine
-    #[arg(short, long, default_value_t = 5)]
-    blocks: u64,
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
 
-    /// Starting difficulty
-    #[arg(short = 'l', long, default_value_t = 4)]
-    difficulty: usize,
-
-    /// Custom data
-    #[arg(short, long, default_value = "MChain data")]
-    data: String,
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Mine new blocks
+    Mine {
+        #[arg(short, long, default_value_t = 3)]
+        blocks: u64,
+        #[arg(short = 'l', long, default_value_t = 5)]
+        difficulty: usize,
+        #[arg(short, long, default_value = "MChain data")]
+        data: String,
+    },
+    /// Verify integrity of stored blocks
+    Verify,
+    /// List existing blocks
+    List,
+    /// Delete all stored blocks
+    Reset,
 }
 
 fn is_apple_silicon() -> bool {
@@ -111,54 +120,84 @@ fn load_blocks_from_disk() -> Vec<Block> {
         }
     }
 
-    // Verify chain
-    for i in 1..chain.len() {
-        if chain[i].previous_hash != chain[i - 1].hash {
-            println!("❌ Chain broken at block {}", chain[i].index);
-            chain.truncate(i);
-            break;
+    chain
+}
+
+fn verify_chain(blockchain: &[Block]) -> bool {
+    for i in 1..blockchain.len() {
+        if blockchain[i].previous_hash != blockchain[i - 1].hash {
+            println!("❌ Invalid block link at index {}", i);
+            return false;
         }
     }
+    println!("✅ All blocks are properly linked.");
+    true
+}
 
-    chain
+fn list_blocks(blockchain: &[Block]) {
+    for block in blockchain {
+        println!("Block {} | Time: {}ms | Nonce: {} | Hash: {}", block.index, block.mining_duration_ms, block.nonce, block.hash);
+    }
+}
+
+fn delete_all_blocks() {
+    if Path::new("mchain_data").exists() {
+        fs::remove_dir_all("mchain_data").expect("Failed to delete mchain_data");
+        println!("🗑️ All blocks deleted.");
+    } else {
+        println!("No blocks to delete.");
+    }
 }
 
 fn main() {
     if !is_apple_silicon() {
-        println!("🚫 MChain mining is only allowed on Apple Silicon.");
+        println!("🚫 MChain only runs on Apple Silicon.");
         exit(1);
     }
 
     let args = Args::parse();
-    let mut blockchain = load_blocks_from_disk();
+    match args.command {
+        Some(Commands::Mine { blocks, difficulty, data }) => {
+            let mut blockchain = load_blocks_from_disk();
 
-    if blockchain.is_empty() {
-        println!("⛏️ No existing chain found — creating genesis block...");
-        let genesis = mine_block(0, "Genesis Block", "0", args.difficulty);
-        save_block_to_file(&genesis);
-        blockchain.push(genesis);
-    } else {
-        println!("🔁 Loaded {} blocks from disk. Resuming chain...", blockchain.len());
-    }
+            if blockchain.is_empty() {
+                println!("⛏️ Creating genesis block...");
+                let genesis = mine_block(0, "Genesis Block", "0", difficulty);
+                save_block_to_file(&genesis);
+                blockchain.push(genesis);
+            }
 
-    let last_index = blockchain.last().unwrap().index;
-    let mut next_index = last_index + 1;
+            let mut next_index = blockchain.last().unwrap().index + 1;
 
-    for i in 0..args.blocks {
-        let prev_hash = &blockchain.last().unwrap().hash;
-        let difficulty = args.difficulty + ((next_index as usize) / 2);
-        let data = format!("{} #{}", args.data, next_index);
-        let block = mine_block(next_index, &data, prev_hash, difficulty);
-        save_block_to_file(&block);
-        blockchain.push(block);
-        next_index += 1;
-    }
-
-    println!("\n📊 Final Blockchain Summary:");
-    for block in &blockchain {
-        println!(
-            "Block {} | Nonce: {} | Time: {}ms | Hash: {}",
-            block.index, block.nonce, block.mining_duration_ms, block.hash
-        );
+            for _ in 0..blocks {
+                let prev_hash = &blockchain.last().unwrap().hash;
+                let block = mine_block(next_index, &format!("{} #{}", data, next_index), prev_hash, difficulty);
+                save_block_to_file(&block);
+                blockchain.push(block);
+                next_index += 1;
+            }
+        },
+        Some(Commands::Verify) => {
+            let chain = load_blocks_from_disk();
+            if chain.is_empty() {
+                println!("📂 No blocks found.");
+            } else {
+                verify_chain(&chain);
+            }
+        },
+        Some(Commands::List) => {
+            let chain = load_blocks_from_disk();
+            if chain.is_empty() {
+                println!("📂 No blocks found.");
+            } else {
+                list_blocks(&chain);
+            }
+        },
+        Some(Commands::Reset) => {
+            delete_all_blocks();
+        },
+        None => {
+            println!("Use --help to see available commands.");
+        }
     }
 }
